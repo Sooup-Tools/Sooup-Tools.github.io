@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Home</title>
+  <link rel="stylesheet" href="style.css">
+  <title>Bluesky Engagement Graph</title>
   <p><a href="https://sooup-tools.github.io/webpage">Home</a></p>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script type="module">
@@ -12,11 +13,19 @@
 
     async function login() {
       agent = new AtpAgent({ service: "https://bsky.social" });
-      await agent.login({
-        identifier: document.getElementById("handle").value,
-        password: document.getElementById("password").value
-      });
-      alert("Login successful!");
+      try{
+        await agent.login({
+          identifier: document.getElementById("handle").value,
+          password: document.getElementById("password").value
+        });
+        document.body.style.backgroundColor = "#d0ebff"; // light blue;
+        document.getElementById("statusMessage").textContent = "✅ Login successful! You can now graph engagement.";
+        document.getElementById("statusMessage").style.color = "green";
+      } catch (error) {
+        console.error("❌ Login failed:", error);
+        document.getElementById("statusMessage").textContent = "❌ Login failed. Please check your credentials.";
+        document.getElementById("statusMessage").style.color = "red";
+      }
     }
 
     async function fetchAllPosts(did, includeReplies, onProgress) {
@@ -131,9 +140,11 @@
       vertical-align: middle;
     }
   </style>
+
 </head>
 <body>
   <h2>Bluesky Engagement Grapher</h2>
+  <div id="statusMessage" style="margin-bottom:20px; font-weight:bold;"></div>
   <label>Handle: <input type="text" id="handle"></label><br>
   <label>Password: <input type="password" id="password"></label><br>
   <button onclick="login()">Login</button>
