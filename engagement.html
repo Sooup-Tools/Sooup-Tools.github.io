@@ -4,7 +4,6 @@
   <meta charset="UTF-8">
   <link rel="stylesheet" href="style.css">
   <title>Bluesky Engagement Graph</title>
-  <p><a href="https://sooup-tools.github.io/webpage">Home</a></p>
   <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
   <script type="module">
     import { AtpAgent } from "https://esm.sh/@atproto/api";
@@ -118,43 +117,23 @@
     window.graphEngagement = graphEngagement;
   </script>
 
-  <style>
-    /* Spinner styling */
-    #spinner {
-      display: none;
-      width: 24px;
-      height: 24px;
-      border: 4px solid #ccc;
-      border-top: 4px solid #4CAF50;
-      border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-right: 10px;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-    #progressText {
-      font-size: 14px;
-      display: inline-block;
-      vertical-align: middle;
-    }
-  </style>
-
 </head>
 <body>
   <h2>Bluesky Engagement Grapher</h2>
+  <p><a href="https://sooup-tools.github.io/webpage">Home</a></p>
   <div id="statusMessage" style="margin-bottom:20px; font-weight:bold;"></div>
-  <label>Handle: <input type="text" id="handle"></label><br>
-  <label>Password: <input type="password" id="password"></label><br>
+  <label>Handle: <input type="text" id="handle"></label>
+  <label>Password: <input type="password" id="password"></label>
   <button onclick="login()">Login</button>
+
+  <hr style="margin:20px 0;">
+
   <button onclick="graphEngagement()">Graph Engagement!</button>
-  <br>
   <label>
     <input type="checkbox" id="includeReplies"> Include replies as posts
   </label>
 
-  <div>
+  <div style="margin-top:10px;">
     <div id="spinner"></div>
     <div id="progressText"></div>
   </div>

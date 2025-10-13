@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="style.css">
+  <title>Bluesky Thread Formatter</title>
+  <script type="module">
+    import { AtpAgent } from "https://esm.sh/@atproto/api";
+
+    let agent = null;
+
+    // ---------- LOGIN ----------
+    async function login() {
+      agent = new AtpAgent({ service: "https://bsky.social" });
+      const handle = document.getElementById("handle").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const status = document.getElementById("statusMessage");
+
+      try {
+        document.getElementById("spinner").style.display = "inline-block";
+        status.textContent = "Logging in...";
+        status.style.color = "black";
+
+        await agent.login({ identifier: handle, password });
+
+        document.body.style.backgroundColor = "#d0ebff"; // light blue
+        status.textContent = "✅ Login successful! You can now format threads.";
+        status.style.color = "green";
+      } catch (error) {
+        console.error("❌ Login failed:", error);
+        status.textContent = "❌ Login failed. Please check your credentials.";
+        status.style.color = "red";
+      } finally {
+        document.getElementById("spinner").style.display = "none";
+      }
+    }
+
+    // ---------- EXTRACT HANDLE AND RKEY ----------
+    function extractPostInfoFromUrl(url) {
+      const path = new URL(url).pathname;
+      const parts = path.split("/").filter(Boolean);
+      if (parts.length >= 3 && parts[2] === "post") {
+        const handle = parts[1];
+        const rkey = parts[3] || parts[parts.length - 1];
+        return { handle, rkey };
+      }
+      throw new Error("Invalid Bluesky post URL format");
+    }
+
+    // ---------- FORMATTERS ----------
+    function formatTextWithIndentation(text, indentLevel) {
+      text = text.replace(/\n/g, " ");
+      return "-".repeat(indentLevel) + "[" + text + "]";
+    }
+
+    function formatPostWithReplies(thread, indentLevel = 0) {
+      if (!thread || !thread.post || !thread.post.record) return "";
+      let formatted = formatTextWithIndentation(thread.post.record.text, indentLevel) + "\n";
+
+      if (thread.replies && thread.replies.length > 0) {
+        for (const reply of thread.replies) {
+          formatted += formatPostWithReplies(reply, indentLevel + 1);
+        }
+      }
+      return formatted;
+    }
+
+    // ---------- FETCH THREAD ----------
+    async function formatThread() {
+      const link = document.getElementById("postUrl").value.trim();
+      const output = document.getElementById("formattedOutput");
+      const status = document.getElementById("statusMessage");
+
+      if (!agent) {
+        status.textContent = "⚠️ Please log in first.";
+        status.style.color = "orange";
+        return;
+      }
+
+      if (!link) {
+        status.textContent = "⚠️ Please enter a Bluesky post URL.";
+        status.style.color = "orange";
+        return;
+      }
+
+      try {
+        document.getElementById("spinner").style.display = "inline-block";
+        status.textContent = "Fetching thread...";
+        status.style.color = "black";
+
+        const { handle, rkey } = extractPostInfoFromUrl(link);
+        const atUri = `at://${handle}/app.bsky.feed.post/${rkey}`;
+
+        const response = await agent.getPostThread({ uri: atUri });
+        const thread = response.data.thread;
+        const formatted = formatPostWithReplies(thread).trim();
+
+        output.textContent = formatted || "(No content found)";
+        await navigator.clipboard.writeText(formatted);
+        status.textContent = "✅ Thread formatted and copied to clipboard!";
+        status.style.color = "green";
+      } catch (error) {
+        console.error("Error:", error);
+        status.textContent = "❌ Error: " + error.message;
+        status.style.color = "red";
+      } finally {
+        document.getElementById("spinner").style.display = "none";
+      }
+    }
+
+    // Expose functions globally
+    window.login = login;
+    window.formatThread = formatThread;
+  </script>
+
+
+</head>
+
+<body>
+  <h2>Bluesky Thread Formatter</h2>
+  <p><a href="https://sooup-tools.github.io/webpage">Home</a></p>
+
+  <div id="statusMessage">Please log in to begin.</div>
+
+  <label>Handle: <input type="text" id="handle" placeholder="username.bsky.social"></label>
+  <label>Password: <input type="password" id="password" placeholder="App password"></label>
+  <button onclick="login()">Login</button>
+
+  <hr style="margin:20px 0;">
+
+  <label>Post URL: <input type="text" id="postUrl" placeholder="https://bsky.app/profile/.../post/..."></label>
+  <button onclick="formatThread()">Format Thread</button>
+
+  <div style="margin-top:10px;">
+    <div id="spinner"></div>
+  </div>
+
+  <pre id="formattedOutput"></pre>
+</body>
+</html>
