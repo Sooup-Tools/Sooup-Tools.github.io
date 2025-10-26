@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Like Similarity Analyzer</title>
+<link rel="stylesheet" href="like_similarity_style.css">
+</head>
+<body>
+
+<h1>Like Similarity Analyzer</h1>
+<p>Upload multiple <code>_likes.json</code> files (e.g. <code>alice_likes.json</code>, <code>bob_likes.json</code>).</p>
+
+<input type="file" id="fileInput" multiple accept=".json"><br><br>
+<button id="analyzeBtn">Analyze</button>
+
+<div id="output" class="hidden">
+  <div class="section">
+    <h2>Summary Statistics</h2>
+    <pre id="summary"></pre>
+  </div>
+  
+  <div class="section">
+    <h2>Similarity Matrix</h2>
+    <a id="downloadSimilarity" download="like_similarity_matrix.csv">⬇️ Download CSV</a>
+    <div id="similarityTable"></div>
+  </div>
+  
+  <div class="section">
+    <h2>Mutual Similarity Matrix (Upper Triangle)</h2>
+    <a id="downloadMutual" download="like_similarity_mutual.csv">⬇️ Download CSV</a>
+    <div id="mutualTable"></div>
+  </div>
+  
+  <div class="section">
+    <h2>Overlap Matrix (Upper Triangle)</h2>
+    <a id="downloadOverlap" download="like_similarity_overlap.csv">⬇️ Download CSV</a>
+    <div id="overlapTable"></div>
+  </div>
+</div>
+
+<script>
+function parseUsername(filename) {
+  return filename.replace(/_likes\.json$/, "");
+}
+
+function createTable(matrix, isInteger = false) {
+  const users = Object.keys(matrix);
+  let html = "<table><tr><th></th>" + users.map(u => `<th>${u}</th>`).join('') + "</tr>";
+  for (const u of users) {
+    html += `<tr><th>${u}</th>`;
+    for (const v of users) {
+      const val = matrix[u][v];
+      html += `<td>${isInteger ? Math.round(val) : val.toFixed(4)}</td>`;
+    }
+    html += "</tr>";
+  }
+  html += "</table>";
+  return html;
+}
+
+function matrixToCSV(matrix) {
+  const users = Object.keys(matrix);
+  const rows = ["," + users.join(",")];
+  for (const u of users) {
+    const row = [u].concat(users.map(v => matrix[u][v]));
+    rows.push(row.join(","));
+  }
+  return rows.join("\n");
+}
+
+function downloadCSVLink(csvText, elementId) {
+  const blob = new Blob([csvText], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  document.getElementById(elementId).href = url;
+}
+
+function analyzeLikeFiles(files) {
+  const userLikes = {};
+
+  for (const file of files) {
+    const username = parseUsername(file.name);
+    try {
+      const likes = JSON.parse(file.content);
+      userLikes[username] = new Set(likes);
+    } catch (err) {
+      console.error("Error parsing", file.name, err);
+    }
+  }
+
+  const users = Object.keys(userLikes);
+  const similarity = {};
+  for (const a of users) {
+    similarity[a] = {};
+    for (const b of users) {
+      if (a === b) {
+        similarity[a][b] = 1.0;
+      } else {
+        const likesA = userLikes[a];
+        const likesB = userLikes[b];
+        const intersection = [...likesA].filter(x => likesB.has(x));
+        similarity[a][b] = likesA.size ? intersection.length / likesA.size : 0.0;
+      }
+    }
+  }
+
+  // Mutual similarity
+  const mutual = {};
+  for (const a of users) {
+    mutual[a] = {};
+    for (const b of users) {
+      if (a === b) {
+        mutual[a][b] = 1.0;
+      } else {
+        mutual[a][b] = (similarity[a][b] + similarity[b][a]) / 2;
+      }
+    }
+  }
+
+  // Overlap matrix
+  const overlap = {};
+  for (const a of users) {
+    overlap[a] = {};
+    for (const b of users) {
+      if (a === b) {
+        overlap[a][b] = userLikes[a].size;
+      } else {
+        const intersection = [...userLikes[a]].filter(x => userLikes[b].has(x));
+        overlap[a][b] = intersection.length;
+      }
+    }
+  }
+
+  // Summary stats
+  const allSims = [];
+  users.forEach(a => users.forEach(b => { if (a !== b) allSims.push(similarity[a][b]); }));
+  const avg = allSims.reduce((a,b)=>a+b,0)/allSims.length;
+  const max = Math.max(...allSims);
+  const min = Math.min(...allSims);
+  const std = Math.sqrt(allSims.map(x => (x - avg)**2).reduce((a,b)=>a+b,0)/allSims.length);
+
+  const pairs = [];
+  users.forEach(a => users.forEach(b => { if (a !== b) pairs.push([a,b,similarity[a][b]]); }));
+  pairs.sort((a,b)=>b[2]-a[2]);
+
+  const summary = `
+Users analyzed: ${users.length}
+Average similarity (excl. self): ${avg.toFixed(4)}
+Max similarity: ${max.toFixed(4)}
+Min similarity: ${min.toFixed(4)}
+Standard deviation: ${std.toFixed(4)}
+
+Top 5 most similar pairs:
+${pairs.slice(0,5).map((p,i)=>`${i+1}. ${p[0]} → ${p[1]}: ${p[2].toFixed(4)}`).join("\n")}
+  `;
+
+  // Display
+  document.getElementById("summary").textContent = summary;
+  document.getElementById("similarityTable").innerHTML = createTable(similarity);
+  document.getElementById("mutualTable").innerHTML = createTable(mutual);
+  document.getElementById("overlapTable").innerHTML = createTable(overlap, true);
+  document.getElementById("output").classList.remove("hidden");
+
+  // CSV downloads
+  downloadCSVLink(matrixToCSV(similarity), "downloadSimilarity");
+  downloadCSVLink(matrixToCSV(mutual), "downloadMutual");
+  downloadCSVLink(matrixToCSV(overlap), "downloadOverlap");
+}
+
+document.getElementById("analyzeBtn").addEventListener("click", async () => {
+  const input = document.getElementById("fileInput");
+  if (!input.files.length) {
+    alert("Please upload at least one _likes.json file.");
+    return;
+  }
+
+  const files = [];
+  for (const f of input.files) {
+    const content = await f.text();
+    files.push({ name: f.name, content });
+  }
+
+  analyzeLikeFiles(files);
+});
+</script>
+
+</body>
+</html>

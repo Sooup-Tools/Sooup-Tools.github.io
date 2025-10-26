@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlueSky Likes Fetcher</title>
+  <link rel="stylesheet" href="style.css" />
+  <script type="module">
+    import { AtpAgent } from "https://esm.sh/@atproto/api";
+
+    let agent = null;
+
+    async function login() {
+      const handle = document.getElementById("handle").value.trim();
+      const password = document.getElementById("password").value.trim();
+      const status = document.getElementById("statusMessage");
+
+      if (!handle || !password) {
+        status.textContent = "Please enter your handle and app password.";
+        status.style.color = "red";
+        return;
+      }
+
+      try {
+        document.getElementById("spinner").style.display = "inline-block";
+        status.textContent = "Logging in...";
+        status.style.color = "black";
+
+        agent = new AtpAgent({ service: "https://bsky.social" });
+        await agent.login({ identifier: handle, password });
+
+        document.body.style.backgroundColor = "#d0ebff"; // light blue
+        status.textContent = "✅ Login successful! You can now fetch likes.";
+        status.style.color = "green";
+
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("fetchSection").style.display = "block";
+      } catch (error) {
+        console.error("❌ Login failed:", error);
+        status.textContent = "❌ Login failed. Please check your credentials.";
+        status.style.color = "red";
+      } finally {
+        document.getElementById("spinner").style.display = "none";
+      }
+    }
+
+    async function getUserDID(handle) {
+      try {
+        const res = await fetch(
+          `https://bsky.social/xrpc/com.atproto.identity.resolveHandle?handle=${handle}`
+        );
+        const data = await res.json();
+        return data.did;
+      } catch (err) {
+        console.error("Failed to get DID:", err);
+        return null;
+      }
+    }
+
+    async function fetchLikesForUser(userHandle) {
+      const userDid = await getUserDID(userHandle);
+      if (!userDid) {
+        appendOutput(`❌ Failed to resolve handle: ${userHandle}`);
+        return [];
+      }
+
+      let allLikes = [];
+      let cursor = null;
+
+      while (true) {
+        const params = new URLSearchParams({
+          repo: userDid,
+          collection: "app.bsky.feed.like",
+          limit: "100",
+        });
+        if (cursor) params.append("cursor", cursor);
+
+        try {
+          const res = await agent.com.atproto.repo.listRecords({
+            repo: userDid,
+            collection: "app.bsky.feed.like",
+            limit: 100,
+            cursor,
+          });
+
+          const records = res.data.records || [];
+          for (const record of records) {
+            const subjectUri = record.value?.subject?.uri || "";
+            const postId = subjectUri.split("/").pop();
+            allLikes.push(postId);
+          }
+
+          cursor = res.data.cursor;
+          if (!cursor || records.length === 0) break;
+        } catch (err) {
+          console.error(`Error fetching likes for ${userHandle}:`, err);
+          break;
+        }
+      }
+
+      return allLikes;
+    }
+
+    async function fetchAll() {
+      const handlesText = document.getElementById("handles").value;
+      const targetHandles = handlesText
+        .split("\n")
+        .map(h => h.split("#")[0].trim())
+        .filter(Boolean);
+
+      if (targetHandles.length === 0) {
+        appendOutput("❌ Please enter at least one handle.");
+        return;
+      }
+
+      document.getElementById("fetchButton").disabled = true;
+      appendOutput(`Starting to fetch likes for ${targetHandles.length} users...`);
+
+      for (const handle of targetHandles) {
+        appendOutput(`\n📘 Fetching likes for @${handle}...`);
+        const likes = await fetchLikesForUser(handle);
+        appendOutput(`✅ Found ${likes.length} likes for ${handle}.`);
+
+        const blob = new Blob([JSON.stringify(likes, null, 2)], {
+          type: "application/json",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${handle}_likes.json`;
+        link.textContent = `Download ${handle}_likes.json`;
+        link.style.display = "block";
+        document.getElementById("output").appendChild(link);
+      }
+
+      document.getElementById("fetchButton").disabled = false;
+    }
+
+    function appendOutput(text) {
+      const output = document.getElementById("output");
+      const p = document.createElement("p");
+      p.textContent = text;
+      output.appendChild(p);
+    }
+
+    window.login = login;
+    window.fetchAll = fetchAll;
+  </script>
+</head>
+
+<body>
+  <div class="container">
+    <h1>BlueSky Likes Fetcher</h1>
+
+    <!-- Login Section -->
+    <div id="loginSection">
+      <label for="handle">Handle or email:</label>
+      <input type="text" id="handle" placeholder="e.g. johndoe.bsky.social" />
+      <br />
+
+      <label for="password">App password:</label>
+      <input type="password" id="password" placeholder="####-####-####-####" />
+      <br />
+
+      <button onclick="login()">Login</button>
+      <div id="spinner" class="spinner" style="display:none"></div>
+      <p id="statusMessage"></p>
+    </div>
+
+    <!-- Fetch Likes Section -->
+    <div id="fetchSection" style="display:none">
+      <h3>Target Handles</h3>
+      <textarea id="handles" rows="8" placeholder="Enter one handle per line..."></textarea>
+      <br />
+      <button id="fetchButton" onclick="fetchAll()">Fetch Likes</button>
+    </div>
+
+    <div id="output"></div>
+  </div>
+</body>
+</html>
